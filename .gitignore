@@ -1,0 +1,67 @@
+# Xcode
+.DS_Store
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+**/.xcworkspace
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# XcodeGen
+*.xcodeproj
+*.xcworkspace
+!default.xcodeproj
+!default.xcworkspace
+
+# Build results
+[Bb]uild/
+[Oo]bj/
+[Ll]og/
+[Pp]reviews/
+
+# Xcode Derived Data
+**/DerivedData
+
+# Xcode Archive
+*.darchive
+
+# Xcode Test Results
+**/TestResults/
+
+# Swift Package Manager (SPM)
+.build/
+
+# CocoaPods
+**/Pods/
+
+# Bundler
+.bundle/
+
+# Carthage
+Carthage/Build/
+Carthage/DerivedData/
+
+# Fastlane
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
