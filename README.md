@@ -35,7 +35,7 @@ A macOS clipboard preview tool for real-time monitoring and previewing clipboard
 ### Using Script (Recommended)
 
 ```bash
-cd /Users/congduan/Desktop/code/_vibe_coding_/ClipboardMac
+cd ClipboardMac
 ./run.sh
 ```
 
