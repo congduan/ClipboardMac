@@ -130,6 +130,33 @@ class ClipboardManager: ObservableObject {
             self?.clipboardItems = []
         }
     }
+    
+    func removeItem(withType type: String) {
+        let pasteboard = NSPasteboard.general
+        
+        // 1. 先计算要保留的项目
+        let itemsToKeep = clipboardItems.filter { $0.pasteboardType != type }
+        
+        // 2. 清空剪切板
+        pasteboard.clearContents()
+        
+        // 3. 写入要保留的项目
+        if !itemsToKeep.isEmpty {
+            let pasteboardItem = NSPasteboardItem()
+            for item in itemsToKeep {
+                let pbType = NSPasteboard.PasteboardType(item.pasteboardType)
+                pasteboardItem.setData(item.content, forType: pbType)
+            }
+            pasteboard.writeObjects([pasteboardItem])
+        }
+        
+        lastChangeCount = pasteboard.changeCount
+        
+        // 4. 更新本地列表
+        DispatchQueue.main.async { [weak self] in
+            self?.clipboardItems = itemsToKeep
+        }
+    }
 }
 
 struct ContentView: View {
@@ -147,6 +174,13 @@ struct ContentView: View {
                     onSelect: {
                         selectedType = item.pasteboardType
                         lastSelectedType = item.pasteboardType
+                    },
+                    onDelete: {
+                        clipboardManager.removeItem(withType: item.pasteboardType)
+                        if selectedType == item.pasteboardType {
+                            selectedType = nil
+                            lastSelectedType = nil
+                        }
                     }
                 )
             }
@@ -523,33 +557,46 @@ struct ClipboardItemRow: View {
     let item: ClipboardItem
     let isSelected: Bool
     let onSelect: () -> Void
+    let onDelete: () -> Void
     
     @State private var isHovered = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Text(item.typeDescription)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(typeColor(for: item.pasteboardType))
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(item.typeDescription)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(typeColor(for: item.pasteboardType))
+                    
+                    Spacer()
+                }
                 
-                Spacer()
+                HStack(spacing: 6) {
+                    Text(item.displayName)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    
+                    Text("•")
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray)
+                    
+                    Text(item.pasteboardType)
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
             
-            HStack(spacing: 6) {
-                Text(item.displayName)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                
-                Text("•")
-                    .font(.system(size: 10))
-                    .foregroundColor(.gray)
-                
-                Text(item.pasteboardType)
-                    .font(.system(size: 10))
-                    .foregroundColor(.gray)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            if isHovered {
+                Button(action: onDelete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.red.opacity(0.8))
+                        .font(.system(size: 16))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .transition(.scale.combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
