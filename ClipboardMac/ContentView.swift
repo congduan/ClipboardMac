@@ -15,19 +15,18 @@ struct ClipboardItem: Identifiable, Hashable {
     }
     
     var typeDescription: String {
-        // 返回类型的友好描述
         switch pasteboardType {
         case NSPasteboard.PasteboardType.string.rawValue, "NSStringPboardType", "public.utf8-plain-text", "public.text":
             return "Plain Text"
         case NSPasteboard.PasteboardType.rtf.rawValue, "public.rtf":
             return "Rich Text (RTF)"
-        case NSPasteboard.PasteboardType.html.rawValue, "public.html":
+        case NSPasteboard.PasteboardType.html.rawValue, "public.html", "Apple HTML pasteboard type":
             return "HTML Document"
         case "public.url":
             return "Web URL"
         case NSPasteboard.PasteboardType.pdf.rawValue, "com.adobe.pdf":
             return "PDF Document"
-        case NSPasteboard.PasteboardType.png.rawValue, "public.png":
+        case NSPasteboard.PasteboardType.png.rawValue, "public.png", "Apple PNG pasteboard type":
             return "PNG Image"
         case NSPasteboard.PasteboardType.tiff.rawValue, "public.tiff":
             return "TIFF Image"
@@ -49,6 +48,10 @@ struct ClipboardItem: Identifiable, Hashable {
             return "Audio File"
         case "Apple URL pasteboard type":
             return "Apple URL"
+        case "org.chromium.source-url":
+            return "Chromium Source URL"
+        case "org.chromium.web-custom-data":
+            return "Chromium Web Custom Data"
         case "com.apple.finder.noderef":
             return "Finder Node"
         case let type where type.hasPrefix("CorePasteboardFlavorType"):
@@ -133,51 +136,19 @@ struct ContentView: View {
     @StateObject private var clipboardManager = ClipboardManager()
     @State private var selectedType: String?
     @State private var lastSelectedType: String?
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
     
     var body: some View {
-        NavigationView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(clipboardManager.clipboardItems) { item in
-                VStack(alignment: .leading, spacing: 2) {
-                    // 第一行：类型描述（带颜色标签）
-                    HStack(spacing: 6) {
-                        Text(item.typeDescription)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(typeColor(for: item.pasteboardType))
-                        
-                        Spacer()
+                ClipboardItemRow(
+                    item: item,
+                    isSelected: selectedType == item.pasteboardType,
+                    onSelect: {
+                        selectedType = item.pasteboardType
+                        lastSelectedType = item.pasteboardType
                     }
-                    
-                    // 第二行：时间和原始类型
-                    HStack(spacing: 6) {
-                        Text(item.displayName)
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                        
-                        Text("•")
-                            .font(.system(size: 10))
-                            .foregroundColor(.gray)
-                        
-                        Text(item.pasteboardType)
-                            .font(.system(size: 10))
-                            .foregroundColor(.gray)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 10)
-                .background(
-                    selectedType == item.pasteboardType
-                    ? Color.accentColor.opacity(0.15)
-                    : Color.clear
                 )
-                .cornerRadius(4)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    selectedType = item.pasteboardType
-                    lastSelectedType = item.pasteboardType
-                }
             }
             .navigationTitle("Clipboard")
             .listStyle(SidebarListStyle())
@@ -207,46 +178,80 @@ struct ContentView: View {
                     lastSelectedType = selectedType
                 }
             }
-            
+        } detail: {
             if let selectedType = selectedType,
                let item = clipboardManager.clipboardItems.first(where: { $0.pasteboardType == selectedType }) {
                 ClipboardContentViewer(item: item)
                     .id(item.id)
             } else {
-                Text("选择一个剪切板项来查看内容")
+                Text("Select a clipboard item to view content")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.secondary.opacity(0.1))
             }
         }
         .frame(minWidth: 800, minHeight: 600)
+        .onAppear {
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                handleKeyEvent(event)
+                return event
+            }
+        }
     }
     
-    // 根据类型返回颜色
-    private func typeColor(for type: String) -> Color {
-        switch type {
-        case NSPasteboard.PasteboardType.string.rawValue, "NSStringPboardType", "public.utf8-plain-text", "public.text":
-            return .blue
-        case NSPasteboard.PasteboardType.html.rawValue, "public.html":
-            return .orange
-        case NSPasteboard.PasteboardType.rtf.rawValue, "public.rtf":
-            return .purple
-        case "public.url", "Apple URL pasteboard type":
-            return .green
-        case NSPasteboard.PasteboardType.pdf.rawValue, "com.adobe.pdf":
-            return .red
-        case NSPasteboard.PasteboardType.png.rawValue, NSPasteboard.PasteboardType.tiff.rawValue, "public.png", "public.tiff", "public.image", "com.apple.icns":
-            return .pink
-        case "public.file-url", "NSFilenamesPboardType":
-            return .gray
-        case "public.json", "public.xml", "public.source-code":
-            return .cyan
-        case "public.movie", "public.video":
-            return .indigo
-        case "public.audio":
-            return .mint
-        default:
-            return .secondary
+    private func handleKeyEvent(_ event: NSEvent) {
+        let items = clipboardManager.clipboardItems
+        guard !items.isEmpty else { return }
+        
+        let currentIndex: Int
+        if let selectedType = selectedType {
+            currentIndex = items.firstIndex(where: { $0.pasteboardType == selectedType }) ?? -1
+        } else {
+            currentIndex = -1
         }
+        
+        switch event.keyCode {
+        case 126:
+            let newIndex = max(0, currentIndex - 1)
+            if newIndex >= 0 && newIndex < items.count {
+                selectedType = items[newIndex].pasteboardType
+                lastSelectedType = selectedType
+            }
+        case 125:
+            let newIndex = min(items.count - 1, currentIndex + 1)
+            if newIndex >= 0 && newIndex < items.count {
+                selectedType = items[newIndex].pasteboardType
+                lastSelectedType = selectedType
+            }
+        default:
+            break
+        }
+    }
+}
+
+private func typeColor(for type: String) -> Color {
+    switch type {
+    case NSPasteboard.PasteboardType.string.rawValue, "NSStringPboardType", "public.utf8-plain-text", "public.text":
+        return .blue
+    case NSPasteboard.PasteboardType.html.rawValue, "public.html", "Apple Html pasteboard type":
+        return .orange
+    case NSPasteboard.PasteboardType.rtf.rawValue, "public.rtf":
+        return .purple
+    case "public.url", "Apple URL pasteboard type", "org.chromium.source-url", "org.chromium.web-custom-data":
+        return .green
+    case NSPasteboard.PasteboardType.pdf.rawValue, "com.adobe.pdf":
+        return .red
+    case NSPasteboard.PasteboardType.png.rawValue, NSPasteboard.PasteboardType.tiff.rawValue, "public.png", "public.tiff", "public.image", "com.apple.icns", "Apple PNG pasteboard type":
+        return .pink
+    case "public.file-url", "NSFilenamesPboardType":
+        return .gray
+    case "public.json", "public.xml", "public.source-code":
+        return .cyan
+    case "public.movie", "public.video":
+        return .indigo
+    case "public.audio":
+        return .mint
+    default:
+        return .secondary
     }
 }
 
@@ -256,10 +261,10 @@ struct ClipboardContentViewer: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("类型: \(item.pasteboardType)")
+                Text("Type: \(item.pasteboardType)")
                     .font(.headline)
                 
-                Text("时间: \(String(describing: item.displayName.split(separator: " - ").last ?? ""))")
+                Text("Time: \(String(describing: item.displayName.split(separator: " - ").last ?? ""))")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
@@ -269,13 +274,12 @@ struct ClipboardContentViewer: View {
             }
             .padding()
         }
-        .navigationTitle("内容预览")
+        .navigationTitle("Content Preview")
     }
     
     @ViewBuilder
     private var contentView: some View {
         switch item.pasteboardType {
-        // 文本类型
         case NSPasteboard.PasteboardType.string.rawValue,
              "NSStringPboardType",
              "public.utf8-plain-text",
@@ -285,53 +289,49 @@ struct ClipboardContentViewer: View {
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        // 富文本
         case NSPasteboard.PasteboardType.rtf.rawValue,
              "public.rtf":
             if let string = String(data: item.content, encoding: .utf8) {
-                Text("RTF 内容:")
+                Text("RTF Content:")
                     .font(.body)
                 Text(string)
                     .font(.system(.body, design: .monospaced))
                     .fixedSize(horizontal: false, vertical: true)
             }
-        // 图片类型
         case NSPasteboard.PasteboardType.png.rawValue,
              NSPasteboard.PasteboardType.tiff.rawValue,
              "public.png",
              "public.tiff",
              "public.image",
              "com.apple.icns",
-             "NeXT TIFF v4.0 pasteboard type":
+             "NeXT TIFF v4.0 pasteboard type",
+             "Apple PNG pasteboard type":
             if let image = NSImage(data: item.content) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: 400, maxHeight: 400)
             }
-        // PDF
         case NSPasteboard.PasteboardType.pdf.rawValue,
              "com.adobe.pdf":
-            Text("PDF 内容")
+            Text("PDF Content")
                 .font(.body)
-            Text("(PDF 预览)")
+            Text("(PDF Preview)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-        // HTML
         case NSPasteboard.PasteboardType.html.rawValue,
-             "public.html":
+             "public.html",
+             "Apple HTML pasteboard type":
             if let html = String(data: item.content, encoding: .utf8) {
                 VStack(alignment: .leading, spacing: 16) {
-                    // 网页预览
-                    Text("网页预览:")
+                    Text("Web Preview:")
                         .font(.headline)
                     HTMLPreviewView(htmlContent: html)
                         .frame(minHeight: 300)
                     
                     Divider()
                     
-                    // 原始 HTML 代码
-                    Text("原始 HTML 代码:")
+                    Text("Raw HTML Source:")
                         .font(.headline)
                     Text(html)
                         .font(.system(.body, design: .monospaced))
@@ -341,7 +341,6 @@ struct ClipboardContentViewer: View {
                         .cornerRadius(4)
                 }
             }
-        // URL
         case NSPasteboard.PasteboardType.URL.rawValue,
              "public.url":
             if let urlString = String(data: item.content, encoding: .utf8),
@@ -353,18 +352,16 @@ struct ClipboardContentViewer: View {
                     .foregroundColor(.blue)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        // 文件路径
         case "public.file-url",
              "NSFilenamesPboardType":
             if let urlString = String(data: item.content, encoding: .utf8),
                let url = URL(string: urlString) {
-                Text("文件路径:")
+                Text("File Path:")
                     .font(.body)
                 Text(url.path)
                     .font(.system(.body, design: .monospaced))
                     .fixedSize(horizontal: false, vertical: true)
             }
-        // Apple URL
         case "Apple URL pasteboard type":
             if let urlString = String(data: item.content, encoding: .utf8) {
                 Text("Apple URL:")
@@ -374,51 +371,54 @@ struct ClipboardContentViewer: View {
                     .foregroundColor(.blue)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        // Finder 节点引用
+        case "org.chromium.source-url":
+            if let urlString = String(data: item.content, encoding: .utf8) {
+                Text("Chromium Source URL:")
+                    .font(.body)
+                Text(urlString)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.blue)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         case "com.apple.finder.noderef":
-            Text("Finder 节点引用")
+            Text("Finder Node Reference")
                 .font(.body)
-            Text("(Finder 内部数据)")
+            Text("(Finder Internal Data)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-        // 颜色
         case NSPasteboard.PasteboardType.color.rawValue:
-            Text("颜色数据")
+            Text("Color Data")
                 .font(.body)
-            Text("(颜色信息)")
+            Text("(Color Information)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-        // 字体
         case NSPasteboard.PasteboardType.font.rawValue:
-            Text("字体数据")
+            Text("Font Data")
                 .font(.body)
-            Text("(字体信息)")
+            Text("(Font Information)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-        // 声音
         case NSPasteboard.PasteboardType.sound.rawValue:
-            Text("音频数据")
+            Text("Audio Data")
                 .font(.body)
-            Text("(音频内容)")
+            Text("(Audio Content)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-        // 多文件类型
         case NSPasteboard.PasteboardType.fileContents.rawValue:
-            Text("文件内容")
+            Text("File Contents")
                 .font(.body)
-            Text("(文件数据)")
+            Text("(File Data)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
         case NSPasteboard.PasteboardType.filePromise.rawValue:
-            Text("文件承诺")
+            Text("File Promise")
                 .font(.body)
-            Text("(延迟加载的文件)")
+            Text("(Lazy Loaded File)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-        // 其他常见类型
         case "public.utf16-external-plain-text":
             if let string = String(data: item.content, encoding: .utf16) {
-                Text("UTF-16 文本:")
+                Text("UTF-16 Text:")
                     .font(.body)
                 Text(string)
                     .font(.body)
@@ -426,7 +426,7 @@ struct ClipboardContentViewer: View {
             }
         case "com.apple.traditional-mac-plain-text":
             if let string = String(data: item.content, encoding: .macOSRoman) {
-                Text("Mac Roman 文本:")
+                Text("Mac Roman Text:")
                     .font(.body)
                 Text(string)
                     .font(.body)
@@ -434,7 +434,7 @@ struct ClipboardContentViewer: View {
             }
         case "public.utf16-plain-text":
             if let string = String(data: item.content, encoding: .utf16) {
-                Text("UTF-16 文本:")
+                Text("UTF-16 Text:")
                     .font(.body)
                 Text(string)
                     .font(.body)
@@ -448,7 +448,7 @@ struct ClipboardContentViewer: View {
             }
         case "public.xml":
             if let xml = String(data: item.content, encoding: .utf8) {
-                Text("XML 内容:")
+                Text("XML Content:")
                     .font(.body)
                 Text(xml)
                     .font(.system(.body, design: .monospaced))
@@ -456,7 +456,7 @@ struct ClipboardContentViewer: View {
             }
         case "public.json":
             if let json = String(data: item.content, encoding: .utf8) {
-                Text("JSON 内容:")
+                Text("JSON Content:")
                     .font(.body)
                 Text(json)
                     .font(.system(.body, design: .monospaced))
@@ -464,7 +464,7 @@ struct ClipboardContentViewer: View {
             }
         case "public.source-code":
             if let code = String(data: item.content, encoding: .utf8) {
-                Text("源代码:")
+                Text("Source Code:")
                     .font(.body)
                 Text(code)
                     .font(.system(.body, design: .monospaced))
@@ -472,42 +472,115 @@ struct ClipboardContentViewer: View {
             }
         case "public.movie",
              "public.video":
-            Text("视频内容")
+            Text("Video Content")
                 .font(.body)
-            Text("(视频数据)")
+            Text("(Video Data)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
         case "public.audio":
-            Text("音频内容")
+            Text("Audio Content")
                 .font(.body)
-            Text("(音频数据)")
+            Text("(Audio Data)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-        // CorePasteboard 类型 - 通常是内部数据
         case let type where type.hasPrefix("CorePasteboardFlavorType"):
-            Text("CorePasteboard 内部数据")
+            Text("CorePasteboard Internal Data")
                 .font(.body)
             Text("(\(type))")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-        // dyn. 类型 - 动态生成的类型标识符
         case let type where type.hasPrefix("dyn."):
-            Text("动态类型数据")
+            Text("Dynamic Type Data")
                 .font(.body)
             Text("(\(type))")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+        case "org.chromium.web-custom-data":
+            if let data = String(data: item.content, encoding: .utf8) {
+                Text("Chromium Web Custom Data:")
+                    .font(.body)
+                Text(data)
+                    .font(.system(.body, design: .monospaced))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Chromium Web Custom Data")
+                    .font(.body)
+                Text("(Binary Data)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
         default:
-            Text("未知类型: \(item.pasteboardType)")
+            Text("Unknown Type: \(item.pasteboardType)")
                 .font(.body)
-            Text("数据大小: \(item.content.count) 字节")
+            Text("Data Size: \(item.content.count) bytes")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
         }
     }
 }
 
-// HTML 预览视图
+struct ClipboardItemRow: View {
+    let item: ClipboardItem
+    let isSelected: Bool
+    let onSelect: () -> Void
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(item.typeDescription)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(typeColor(for: item.pasteboardType))
+                
+                Spacer()
+            }
+            
+            HStack(spacing: 6) {
+                Text(item.displayName)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                
+                Text("•")
+                    .font(.system(size: 10))
+                    .foregroundColor(.gray)
+                
+                Text(item.pasteboardType)
+                    .font(.system(size: 10))
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(backgroundColor)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+    }
+    
+    private var backgroundColor: Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.2)
+        } else if isHovered {
+            return Color.gray.opacity(0.15)
+        } else {
+            return Color.clear
+        }
+    }
+}
+
 struct HTMLPreviewView: NSViewRepresentable {
     let htmlContent: String
     
