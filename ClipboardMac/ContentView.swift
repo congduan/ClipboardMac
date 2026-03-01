@@ -94,7 +94,12 @@ class ClipboardManager: ObservableObject {
     
     private func processClipboard() {
         let pasteboard = NSPasteboard.general
-        guard let types = pasteboard.types, !types.isEmpty else { return }
+        guard let types = pasteboard.types, !types.isEmpty else {
+            DispatchQueue.main.async { [weak self] in
+                self?.clipboardItems = []
+            }
+            return
+        }
         
         var updatedItems: [ClipboardItem] = []
         
@@ -111,6 +116,15 @@ class ClipboardManager: ObservableObject {
         
         DispatchQueue.main.async { [weak self] in
             self?.clipboardItems = updatedItems
+        }
+    }
+    
+    func clearClipboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        lastChangeCount = pasteboard.changeCount
+        DispatchQueue.main.async { [weak self] in
+            self?.clipboardItems = []
         }
     }
 }
@@ -165,8 +179,21 @@ struct ContentView: View {
                     lastSelectedType = item.pasteboardType
                 }
             }
-            .navigationTitle("剪切板项")
+            .navigationTitle("Clipboard")
             .listStyle(SidebarListStyle())
+            .toolbar {
+                ToolbarItem {
+                    Button(action: {
+                        clipboardManager.clearClipboard()
+                        selectedType = nil
+                        lastSelectedType = nil
+                    }) {
+                        Label("Clear", systemImage: "trash")
+                    }
+                    .help("Clear clipboard")
+                    .disabled(clipboardManager.clipboardItems.isEmpty)
+                }
+            }
             .onChange(of: clipboardManager.clipboardItems) { newItems in
                 if let lastType = lastSelectedType {
                     if newItems.contains(where: { $0.pasteboardType == lastType }) {
